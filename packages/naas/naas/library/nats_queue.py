@@ -1,10 +1,4 @@
-"""NATS JetStream-backed queue compatibility layer.
-
-This module provides a minimal RQ-compatible API used by NAAS resources while
-routing transport via NATS JetStream. It keeps an in-memory state cache so API
-status endpoints continue to work even when JetStream is temporarily
-unavailable.
-"""
+"""NATS JetStream-backed queue/state layer."""
 
 from __future__ import annotations
 
@@ -12,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import socket
 import threading
 from collections.abc import Callable
@@ -78,8 +73,8 @@ class _Store:
 _STORE = _Store()
 
 
-class RedisLikeKV:
-    """Small Redis-like API used by auth/dedup/idempotency/api-key helpers."""
+class KVStore:
+    """Small KV-style API used by auth/dedup/idempotency/api-key helpers."""
 
     def ping(self) -> bool:
         return True
@@ -191,7 +186,7 @@ class Job:
         func: Callable[..., Any],
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
-        connection: RedisLikeKV,
+        connection: KVStore,
         job_id: str,
         meta: dict[str, Any] | None = None,
         on_success: Callback | None = None,
@@ -242,7 +237,7 @@ class Job:
                     q.remove(self.id)
 
     @classmethod
-    def fetch(cls, job_id: str, connection: RedisLikeKV) -> Job:
+    def fetch(cls, job_id: str, connection: KVStore) -> Job:
         _ = connection
         with _STORE.lock:
             job = _STORE.jobs.get(job_id)
@@ -251,14 +246,14 @@ class Job:
             return job
 
     @classmethod
-    def fetch_many(cls, job_ids: list[str], connection: RedisLikeKV) -> list[Job | None]:
+    def fetch_many(cls, job_ids: list[str], connection: KVStore) -> list[Job | None]:
         _ = connection
         with _STORE.lock:
             return [_STORE.jobs.get(job_id) for job_id in job_ids]
 
 
 class Queue:
-    def __init__(self, name: str, connection: RedisLikeKV) -> None:
+    def __init__(self, name: str, connection: KVStore) -> None:
         self.name = name
         self.connection = connection
         with _STORE.lock:
@@ -312,7 +307,7 @@ class Queue:
 
 
 class Worker:
-    def __init__(self, queues: list[Queue], name: str, connection: RedisLikeKV) -> None:
+    def __init__(self, queues: list[Queue], name: str, connection: KVStore) -> None:
         self._queues = queues
         self.name = name
         self.connection = connection
@@ -321,7 +316,7 @@ class Worker:
         self._current_job_id: str | None = None
 
     @classmethod
-    def all(cls, connection: RedisLikeKV) -> list[Worker]:
+    def all(cls, connection: KVStore) -> list[Worker]:
         _ = connection
         with _STORE.lock:
             workers = []
@@ -357,7 +352,7 @@ class BaseWorker(Worker):
 class _Registry:
     status: JobStatus
 
-    def __init__(self, queue: Queue | None = None, connection: RedisLikeKV | None = None) -> None:
+    def __init__(self, queue: Queue | None = None, connection: KVStore | None = None) -> None:
         self.queue = queue
         self.connection = connection
 
@@ -398,15 +393,23 @@ class StartedJobRegistry(_Registry):
 
 
 # NATS transport configuration
-NATS_SERVERS = "nats://localhost:4222"
-TASK_SUBJECT_PREFIX = "naas.jobs"
-DEVICE_DETAILS_SUBJECT_PREFIX = "naas.devices"
+NATS_SERVERS = os.environ.get("NATS_SERVERS", "nats://localhost:4222")
+TASK_SUBJECT_PREFIX = os.environ.get("NATS_TASK_SUBJECT_PREFIX", "tasks")
+DEVICE_DETAILS_SUBJECT_PREFIX = os.environ.get("NATS_DEVICE_SUBJECT_PREFIX", "devices")
 
 
 def configure_nats(*, servers: str | None = None) -> None:
     global NATS_SERVERS
     if servers:
         NATS_SERVERS = servers
+
+
+def task_subject(queue_name: str) -> str:
+    return f"{TASK_SUBJECT_PREFIX}.{queue_name}"
+
+
+def task_subject_pattern() -> str:
+    return f"{TASK_SUBJECT_PREFIX}.*"
 
 
 async def _publish_job_async(subject: str, payload: dict[str, Any]) -> None:
@@ -427,7 +430,7 @@ def publish_job(queue_name: str, job: Job) -> None:
         "meta": job.meta,
         "enqueued_at": job.enqueued_at.isoformat(),
     }
-    subject = f"{TASK_SUBJECT_PREFIX}.{queue_name}"
+    subject = task_subject(queue_name)
     servers = [s.strip() for s in NATS_SERVERS.split(",") if s.strip()]
 
     for server in servers:

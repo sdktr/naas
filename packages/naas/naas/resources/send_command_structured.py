@@ -51,7 +51,7 @@ class SendCommandStructured(Resource):
         validated: SendCommandStructuredRequest = request.context.json
         ip_str = validated.host
 
-        if device_lockout(ip=ip_str, redis=current_app.config["redis"]):
+        if device_lockout(ip=ip_str, kv_store=current_app.config["kv_store"]):
             current_app.logger.error("%s: Device %s is locked out", g.request_id, ip_str)
             raise LockedOut
 
@@ -72,15 +72,15 @@ class SendCommandStructured(Resource):
             validated.commands,
         )
 
-        q = get_queue_for_context(validated.context, current_app.config["redis"])
+        q = get_queue_for_context(validated.context, current_app.config["kv_store"])
 
         # Check idempotency key if provided
         idempotency_key = request.headers.get("X-Idempotency-Key")
         if idempotency_key:
-            existing_job_id = get_idempotent_job_id(idempotency_key, current_app.config["redis"])
+            existing_job_id = get_idempotent_job_id(idempotency_key, current_app.config["kv_store"])
             if existing_job_id:
                 try:
-                    existing_job = RQJob.fetch(existing_job_id, connection=current_app.config["redis"])
+                    existing_job = RQJob.fetch(existing_job_id, connection=current_app.config["kv_store"])
                     response = JobResponse(
                         job_id=existing_job_id,
                         message="Job enqueued",
@@ -97,11 +97,11 @@ class SendCommandStructured(Resource):
         # Check for duplicate in-flight job
         _commands = validated.commands
         duplicate_job_id = get_duplicate_job_id(
-            ip_str, validated.platform, list(_commands), g.credentials.username, current_app.config["redis"]
+            ip_str, validated.platform, list(_commands), g.credentials.username, current_app.config["kv_store"]
         )
         if duplicate_job_id:
             try:
-                dup_job = RQJob.fetch(duplicate_job_id, connection=current_app.config["redis"])
+                dup_job = RQJob.fetch(duplicate_job_id, connection=current_app.config["kv_store"])
                 # Only return dedup if current user owns the job
                 _user_hash = g.credentials.salted_hash()
                 if job_unlocker(salted_creds=_user_hash, job_id=duplicate_job_id):
@@ -154,14 +154,14 @@ class SendCommandStructured(Resource):
         job_locker(salted_creds=user_hash, job=job)
 
         if idempotency_key:
-            store_idempotency_key(idempotency_key, job_id, current_app.config["redis"])
+            store_idempotency_key(idempotency_key, job_id, current_app.config["kv_store"])
 
-        dedup_redis_key = register_dedup_key(
-            ip_str, validated.platform, list(_commands), g.credentials.username, job_id, current_app.config["redis"]
+        dedup_kv_key = register_dedup_key(
+            ip_str, validated.platform, list(_commands), g.credentials.username, job_id, current_app.config["kv_store"]
         )
-        if validated.tags or dedup_redis_key:
-            if dedup_redis_key:
-                job.meta["dedup_key"] = dedup_redis_key
+        if validated.tags or dedup_kv_key:
+            if dedup_kv_key:
+                job.meta["dedup_key"] = dedup_kv_key
             if validated.tags:
                 job.meta["tags"] = validated.tags
             job.save_meta()

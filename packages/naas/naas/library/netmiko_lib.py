@@ -15,7 +15,7 @@ from paramiko import ssh_exception
 from naas.config import CIRCUIT_BREAKER_ENABLED, CONNECTION_POOL_ENABLED, CONNECTION_POOL_KEEPALIVE
 from naas.library.audit import emit_audit_event
 from naas.library.auth import tacacs_auth_lockout
-from naas.library.circuit_breaker import _get_redis, with_circuit_breaker
+from naas.library.circuit_breaker import _get_kv_store, with_circuit_breaker
 from naas.library.connection_pool import pool
 
 # Common error patterns across IOS, NX-OS, EOS, JunOS, and similar platforms
@@ -228,7 +228,7 @@ def _netmiko_send_command_impl(
         raise  # Re-raise to trigger circuit breaker
     except netmiko.NetMikoAuthenticationException as e:
         logger.debug("%s %s:Netmiko authentication failure connecting to device: %s", request_id, ip, e)
-        tacacs_auth_lockout(username=credentials.username, redis=_get_redis(), report_failure=True)
+        tacacs_auth_lockout(username=credentials.username, kv_store=_get_kv_store(), report_failure=True)
         duration_ms = int((time.time() - start_time) * 1000)
         emit_audit_event("job.completed", request_id=request_id, status="failed", duration_ms=duration_ms)
         return None, str(e)  # Don't trigger circuit breaker for auth failures
@@ -444,7 +444,7 @@ def _netmiko_send_config_impl(
         raise  # Re-raise to trigger circuit breaker
     except netmiko.NetMikoAuthenticationException as e:
         logger.debug("%s %s:Netmiko authentication failure connecting to device: %s", request_id, ip, e)
-        tacacs_auth_lockout(username=credentials.username, redis=_get_redis(), report_failure=True)
+        tacacs_auth_lockout(username=credentials.username, kv_store=_get_kv_store(), report_failure=True)
         duration_ms = int((time.time() - start_time) * 1000)
         emit_audit_event("job.completed", request_id=request_id, status="failed", duration_ms=duration_ms)
         return None, str(e)  # Don't trigger circuit breaker for auth failures

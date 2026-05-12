@@ -9,8 +9,7 @@ from uuid import uuid4
 from flask import current_app, request
 
 from naas.library.audit import emit_audit_event
-from naas.library.nats_queue import Job
-from naas.library.nats_queue import RedisLikeKV as Redis
+from naas.library.nats_queue import Job, KVStore
 
 if TYPE_CHECKING:
     from naas.library.nats_queue import Job
@@ -38,7 +37,7 @@ def job_unlocker(salted_creds: str, job_id: str) -> bool:
 
     try:
         current_app.logger.debug("Attempting to unlock job %s with %s", job_id, salted_creds)
-        job = Job.fetch(job_id, connection=current_app.config["redis"])
+        job = Job.fetch(job_id, connection=current_app.config["kv_store"])
         stored_hash = job.meta.get("hash", "")
         if stored_hash == salted_creds:
             return True
@@ -50,39 +49,39 @@ def job_unlocker(salted_creds: str, job_id: str) -> bool:
         return False
 
 
-def _is_locked_out(redis_key: str, redis: Redis, report_failure: bool = False) -> bool:
+def _is_locked_out(kv_key: str, kv_store: KVStore, report_failure: bool = False) -> bool:
     """
     Sliding-window lockout: 10 failures within 10 minutes triggers a lockout.
-    Uses a Redis sorted set with timestamps as scores for O(log N) window pruning.
-    :param redis_key: Redis key for this lockout counter
-    :param redis: Redis connection
+    Uses a KVStore sorted set with timestamps as scores for O(log N) window pruning.
+    :param kv_key: KVStore key for this lockout counter
+    :param kv_store: KVStore connection
     :param report_failure: Record a new failure before checking
     :return: True if locked out, False if access is allowed
     """
     window_start = (datetime.now() - timedelta(minutes=10)).timestamp()
-    redis.zremrangebyscore(redis_key, 0, window_start)
+    kv_store.zremrangebyscore(kv_key, 0, window_start)
     if report_failure:
-        redis.zadd(redis_key, {str(uuid4()): datetime.now().timestamp()})
-        redis.expire(redis_key, 600)
+        kv_store.zadd(kv_key, {str(uuid4()): datetime.now().timestamp()})
+        kv_store.expire(kv_key, 600)
 
-    failure_count: int = redis.zcard(redis_key)  # type: ignore[assignment]  # redis stubs type zcard as Awaitable[Any]|Any; sync client always returns int
+    failure_count: int = kv_store.zcard(kv_key)  # type: ignore[assignment]  # kv_store stubs type zcard as Awaitable[Any]|Any; sync client always returns int
     is_locked = failure_count >= 10
 
-    if is_locked and redis_key.startswith("naas_failures_device_"):
-        ip = redis_key.replace("naas_failures_device_", "")
+    if is_locked and kv_key.startswith("naas_failures_device_"):
+        ip = kv_key.replace("naas_failures_device_", "")
         emit_audit_event("device.locked_out", host=ip, failure_count=failure_count)
 
     return is_locked
 
 
-def tacacs_auth_lockout(username: str, redis: Redis, report_failure: bool = False) -> bool:
+def tacacs_auth_lockout(username: str, kv_store: KVStore, report_failure: bool = False) -> bool:
     """Check (and optionally record) a TACACS auth failure for a user."""
-    return _is_locked_out(f"naas_failures_{username}", redis, report_failure)
+    return _is_locked_out(f"naas_failures_{username}", kv_store, report_failure)
 
 
-def device_lockout(ip: str, redis: Redis, report_failure: bool = False) -> bool:
+def device_lockout(ip: str, kv_store: KVStore, report_failure: bool = False) -> bool:
     """Check (and optionally record) a connection failure for a device IP."""
-    return _is_locked_out(f"naas_failures_device_{ip}", redis, report_failure)
+    return _is_locked_out(f"naas_failures_device_{ip}", kv_store, report_failure)
 
 
 class Credentials:
@@ -115,13 +114,13 @@ class Credentials:
     def salted_hash(self, salt: str | None = None) -> str:
         """
         SHA512 (salted) hash the username/password and return the hexdigest
-        :param salt: If not provided, we'll fetch it from Redis
+        :param salt: If not provided, we'll fetch it from KVStore
         :return:
         """
 
-        redis = current_app.config["redis"]
+        kv_store = current_app.config["kv_store"]
         if salt is None:
-            salt = redis.get("naas_cred_salt").decode()
+            salt = kv_store.get("naas_cred_salt").decode()
         current_app.logger.debug("Salting %s:<redacted> with %s...", self.username, salt)
         pork = self.username + ":" + self.password + salt
         salt_shaker = sha512(pork.encode())

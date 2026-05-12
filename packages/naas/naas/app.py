@@ -19,7 +19,7 @@ from pythonjsonlogger.json import JsonFormatter
 from naas import __base_response__
 from naas.config import app_configure
 from naas.library.errorhandlers import api_error_generator
-from naas.library.nats_queue import BackendUnavailableError as RedisError
+from naas.library.nats_queue import BackendUnavailableError as BackendError
 from naas.library.worker_cache import get_cached_workers
 from naas.resources.api_keys import ApiKey, ApiKeyRotate, ApiKeys
 from naas.resources.cancel_job import CancelJob
@@ -38,10 +38,10 @@ app = Flask(__name__)
 app_configure(app)
 
 
-@app.errorhandler(RedisError)
-def handle_redis_error(e: RedisError):
-    """Return 503 for any Redis connectivity failure without leaking internal details."""
-    app.logger.error("Redis error: %s", type(e).__name__)
+@app.errorhandler(BackendError)
+def handle_backend_error(e: BackendError):
+    """Return 503 for any KVStore connectivity failure without leaking internal details."""
+    app.logger.error("KVStore error: %s", type(e).__name__)
     response = jsonify({"error": "Queue backend unavailable", "status": 503, **__base_response__})
     response.status_code = 503
     response.headers["Retry-After"] = "10"
@@ -59,14 +59,14 @@ _failed_jobs = Gauge("naas_failed_jobs_total", "Number of jobs in the failed reg
 def _update_queue_metrics() -> None:
     """Refresh queue/worker gauges on each request."""
     q = app.config.get("q")
-    redis = app.config.get("redis")
+    kv_store = app.config.get("kv_store")
     if q is not None:
         _queue_depth.set(len(q))
-    if redis is not None:
-        _workers_active.set(len(get_cached_workers(redis)))
+    if kv_store is not None:
+        _workers_active.set(len(get_cached_workers(kv_store)))
         from naas.library.nats_queue import FailedJobRegistry
 
-        _failed_jobs.set(len(FailedJobRegistry(connection=redis)))
+        _failed_jobs.set(len(FailedJobRegistry(connection=kv_store)))
 
 
 # Structured JSON logging

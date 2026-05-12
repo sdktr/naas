@@ -6,15 +6,15 @@ from fakeredis import FakeStrictRedis
 
 @pytest.fixture
 def fake_redis():
-    """Provide a fake Redis instance for testing (no decode for binary data)."""
+    """Provide a fake KV store instance for testing (no decode for binary data)."""
     return FakeStrictRedis()
 
 
 @pytest.fixture
 def app():
     """Provide Flask app for testing."""
-    # Mock Redis and RQ before importing app
-    with patch("naas.config.Redis", return_value=FakeStrictRedis()):
+    # Mock queue backend before importing app
+    with patch("naas.config.KVStore", return_value=FakeStrictRedis()):
         with patch("naas.config.Queue") as mock_queue:
             mock_job = MagicMock()
             mock_job.id = "test-job-id"
@@ -41,7 +41,7 @@ def app():
             def _mock_job_fetch(jid, connection):
                 job = mock_queue.return_value.fetch_job(jid)
                 if job is None:
-                    from rq.exceptions import NoSuchJobError
+                    from naas.library.nats_queue import NoSuchJobError
 
                     raise NoSuchJobError(jid)
                 return job

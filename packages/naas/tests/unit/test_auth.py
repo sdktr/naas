@@ -6,67 +6,57 @@ from naas.library.auth import Credentials, device_lockout, job_unlocker, tacacs_
 class TestLockout:
     """Test sliding-window lockout for both user (TACACS) and device."""
 
-    def test_no_failures_not_locked(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis) is False
+    def test_no_failures_not_locked(self, fake_redis):
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis) is False
 
-    def test_first_failure_not_locked(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True) is False
+    def test_first_failure_not_locked(self, fake_redis):
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True) is False
 
-    def test_nine_failures_not_locked(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
+    def test_nine_failures_not_locked(self, fake_redis):
         for _ in range(9):
-            tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True)
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis) is False
+            tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True)
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis) is False
 
-    def test_tenth_failure_triggers_lockout(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
+    def test_tenth_failure_triggers_lockout(self, fake_redis):
         for _ in range(9):
-            tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True)
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True) is True
+            tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True)
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True) is True
 
-    def test_lockout_persists(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
+    def test_lockout_persists(self, fake_redis):
         for _ in range(10):
-            tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True)
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis) is True
+            tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True)
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis) is True
 
-    def test_old_failures_expire(self, fake_redis, monkeypatch):
+    def test_old_failures_expire(self, fake_redis):
         """Failures outside the 10-minute window are pruned and don't count."""
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
         from datetime import datetime, timedelta
 
         old_ts = (datetime.now() - timedelta(minutes=30)).timestamp()
         for i in range(9):
             fake_redis.zadd("naas_failures_testuser", {f"old-{i}": old_ts})
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis) is False
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis) is False
 
-    def test_old_failures_plus_new_not_locked(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
+    def test_old_failures_plus_new_not_locked(self, fake_redis):
         from datetime import datetime, timedelta
 
         old_ts = (datetime.now() - timedelta(minutes=30)).timestamp()
         for i in range(9):
             fake_redis.zadd("naas_failures_testuser", {f"old-{i}": old_ts})
-        assert tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True) is False
+        assert tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True) is False
 
-    def test_device_lockout_no_failures(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
-        assert device_lockout(ip="192.0.2.1", redis=fake_redis) is False
+    def test_device_lockout_no_failures(self, fake_redis):
+        assert device_lockout(ip="192.0.2.1", kv_store=fake_redis) is False
 
-    def test_device_lockout_triggers_at_ten(self, fake_redis, monkeypatch):
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
+    def test_device_lockout_triggers_at_ten(self, fake_redis):
         for _ in range(9):
-            device_lockout(ip="192.0.2.1", redis=fake_redis, report_failure=True)
-        assert device_lockout(ip="192.0.2.1", redis=fake_redis, report_failure=True) is True
+            device_lockout(ip="192.0.2.1", kv_store=fake_redis, report_failure=True)
+        assert device_lockout(ip="192.0.2.1", kv_store=fake_redis, report_failure=True) is True
 
-    def test_device_lockout_independent_of_user_lockout(self, fake_redis, monkeypatch):
+    def test_device_lockout_independent_of_user_lockout(self, fake_redis):
         """Device and user lockouts use separate keys."""
-        monkeypatch.setattr("naas.library.auth.Redis", lambda **kwargs: fake_redis)
         for _ in range(10):
-            tacacs_auth_lockout(username="testuser", redis=fake_redis, report_failure=True)
-        assert device_lockout(ip="192.0.2.1", redis=fake_redis) is False
+            tacacs_auth_lockout(username="testuser", kv_store=fake_redis, report_failure=True)
+        assert device_lockout(ip="192.0.2.1", kv_store=fake_redis) is False
 
 
 class TestJobUnlocker:
@@ -95,7 +85,7 @@ class TestJobUnlocker:
 
     def test_job_unlock_exception(self, app, client):
         """Test job unlock handles exceptions gracefully."""
-        app.config["q"].fetch_job = MagicMock(side_effect=Exception("Redis error"))
+        app.config["q"].fetch_job = MagicMock(side_effect=Exception("KV store error"))
 
         with app.app_context():
             assert job_unlocker("test-hash", "test-job-id") is False
@@ -141,9 +131,9 @@ class TestCredentials:
             assert isinstance(result, str)
             assert len(result) == 128  # SHA512 hex digest length
 
-    def test_credentials_salted_hash_from_redis(self, app, client):
-        """Test salted_hash fetches salt from Redis when not provided."""
-        app.config["redis"].set("naas_cred_salt", b"redis-salt")
+    def test_credentials_salted_hash_from_kv_store(self, app, client):
+        """Test salted_hash fetches salt from KV store when not provided."""
+        app.config["kv_store"].set("naas_cred_salt", b"kv-salt")
         creds = Credentials("testuser", "testpass")
 
         with app.app_context():

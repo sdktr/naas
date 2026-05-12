@@ -33,7 +33,7 @@ class ListJobs(Resource):
 
         # Get queue and registries
         q = current_app.config["q"]
-        redis_conn = current_app.config["redis"]
+        kv_store_conn = current_app.config["kv_store"]
 
         # Collect job IDs based on status filter
         job_ids = []
@@ -104,7 +104,7 @@ class ListJobs(Resource):
                 "ended_at": job.ended_at.isoformat() if job.ended_at else None,
                 "tags": getattr(job, "meta", {}).get("tags") if isinstance(getattr(job, "meta", {}), dict) else None,
             }
-            for job in Job.fetch_many(job_ids, connection=redis_conn)
+            for job in Job.fetch_many(job_ids, connection=kv_store_conn)
             if job is not None
         ]
 

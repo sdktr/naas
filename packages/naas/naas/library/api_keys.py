@@ -14,7 +14,7 @@ from flask import current_app
 
 from naas.config import API_KEY_DEFAULT_TTL, API_KEY_MAX_TTL
 from naas.library.audit import emit_audit_event
-from naas.library.nats_queue import RedisLikeKV as Redis
+from naas.library.nats_queue import KVStore
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,8 @@ def create_api_key(
 
     token = jwt.encode(claims, _get_jwt_secret(), algorithm="HS256")
 
-    # Store metadata in Redis for the list endpoint
-    redis: Redis = current_app.config["redis"]
+    # Store metadata in KVStore for the list endpoint
+    kv_store: KVStore = current_app.config["kv_store"]
     meta = {
         "role": role,
         "contexts": json.dumps(contexts),
@@ -77,9 +77,9 @@ def create_api_key(
         "expires_at": expires_at,
         "created_by": created_by,
     }
-    redis.hset(f"{KEY_META_PREFIX}{key_id}", mapping=meta)  # type: ignore[arg-type]
+    kv_store.hset(f"{KEY_META_PREFIX}{key_id}", mapping=meta)  # type: ignore[arg-type]
     if ttl > 0:
-        redis.expire(f"{KEY_META_PREFIX}{key_id}", ttl)
+        kv_store.expire(f"{KEY_META_PREFIX}{key_id}", ttl)
 
     emit_audit_event("apikey.created", key_id=key_id, role=role, contexts=",".join(contexts), created_by=created_by)
 
@@ -107,8 +107,8 @@ def validate_api_key(token: str) -> dict:
     claims: dict = jwt.decode(token, _get_jwt_secret(), algorithms=["HS256"])
 
     # Check revocation
-    redis: Redis = current_app.config["redis"]
-    if redis.sismember(REVOKED_KEYS_SET, claims["sub"]):
+    kv_store: KVStore = current_app.config["kv_store"]
+    if kv_store.sismember(REVOKED_KEYS_SET, claims["sub"]):
         raise jwt.InvalidTokenError(f"API key '{claims['sub']}' has been revoked")
 
     return claims
@@ -123,17 +123,17 @@ def revoke_api_key(key_id: str) -> bool:
     Returns:
         True if the key was found and revoked, False if not found.
     """
-    redis: Redis = current_app.config["redis"]
+    kv_store: KVStore = current_app.config["kv_store"]
 
     # Check key exists in metadata
-    if not redis.exists(f"{KEY_META_PREFIX}{key_id}"):
+    if not kv_store.exists(f"{KEY_META_PREFIX}{key_id}"):
         return False
 
     # Add to revocation set
-    redis.sadd(REVOKED_KEYS_SET, key_id)
+    kv_store.sadd(REVOKED_KEYS_SET, key_id)
 
     # Clean up metadata
-    redis.delete(f"{KEY_META_PREFIX}{key_id}")
+    kv_store.delete(f"{KEY_META_PREFIX}{key_id}")
 
     logger.info("Revoked API key %s", key_id)
     emit_audit_event("apikey.revoked", key_id=key_id, revoked_by="admin")
@@ -146,12 +146,12 @@ def list_api_keys() -> list[dict[str, str]]:
     Returns:
         List of dicts with key_id, role, contexts, created_at, expires_at, created_by.
     """
-    redis: Redis = current_app.config["redis"]
-    keys: list[bytes] = redis.keys(f"{KEY_META_PREFIX}*")  # type: ignore[assignment]
+    kv_store: KVStore = current_app.config["kv_store"]
+    keys: list[bytes] = kv_store.keys(f"{KEY_META_PREFIX}*")  # type: ignore[assignment]
     result = []
     for key in keys:
         key_id = key.decode().removeprefix(KEY_META_PREFIX)
-        meta: dict[bytes, bytes] = redis.hgetall(key.decode())  # type: ignore[assignment]
+        meta: dict[bytes, bytes] = kv_store.hgetall(key.decode())  # type: ignore[assignment]
         if meta:
             result.append(
                 {
@@ -175,8 +175,8 @@ def rotate_api_key(key_id: str) -> dict[str, str | list[str]] | None:
     Returns:
         New key dict (same as create_api_key), or None if key_id not found.
     """
-    redis: Redis = current_app.config["redis"]
-    meta: dict[bytes, bytes] = redis.hgetall(f"{KEY_META_PREFIX}{key_id}")  # type: ignore[assignment]
+    kv_store: KVStore = current_app.config["kv_store"]
+    meta: dict[bytes, bytes] = kv_store.hgetall(f"{KEY_META_PREFIX}{key_id}")  # type: ignore[assignment]
     if not meta:
         return None
 

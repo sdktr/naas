@@ -44,7 +44,7 @@ class CancelJob(Resource):
 
         # Check job exists before auth check (404 > 403)
         try:
-            job = Job.fetch(job_id, connection=current_app.config["redis"])
+            job = Job.fetch(job_id, connection=current_app.config["kv_store"])
         except NoSuchJobError:
             r = {"job_id": job_id, "status": "not_found"}
             r.update(__base_response__)

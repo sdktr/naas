@@ -1,4 +1,4 @@
-"""Credential encryption for Redis at-rest protection.
+"""Credential encryption for KVStore at-rest protection.
 
 See ADR 0006 for design rationale.
 """
@@ -42,13 +42,13 @@ def _get_fernet() -> MultiFernet:
 
 
 def encrypt_credentials(creds: Credentials) -> bytes:
-    """Encrypt a Credentials object for storage in Redis."""
+    """Encrypt a Credentials object for storage in KVStore."""
     payload = json.dumps({"u": creds.username, "p": creds.password, "e": creds.enable}).encode()
     return _get_fernet().encrypt(payload)
 
 
 def decrypt_credentials(token: bytes) -> Credentials:
-    """Decrypt a Credentials object from Redis.
+    """Decrypt a Credentials object from KVStore.
 
     Raises:
         cryptography.fernet.InvalidToken: If decryption fails (wrong key, corrupted data).

@@ -45,7 +45,7 @@ class GetResults(Resource):
 
         # Fetch your job, and return the job status and results (if it's finished)
         try:
-            job = Job.fetch(job_id, connection=current_app.config["redis"])
+            job = Job.fetch(job_id, connection=current_app.config["kv_store"])
         except NoSuchJobError:
             job = None
 

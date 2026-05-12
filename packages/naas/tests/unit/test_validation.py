@@ -16,7 +16,7 @@ def validation_app():
     app = Flask(__name__)
     app.config["TESTING"] = True
     app.config["q"] = None  # Mock queue
-    app.config["redis"] = MagicMock()
+    app.config["kv_store"] = MagicMock()
     return app
 
 

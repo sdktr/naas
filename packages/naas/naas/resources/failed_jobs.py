@@ -53,15 +53,15 @@ class FailedJobs(Resource):
         v = Validate()
         v.has_auth()
 
-        redis = current_app.config["redis"]
-        registry = FailedJobRegistry(connection=redis)
+        kv_store = current_app.config["kv_store"]
+        registry = FailedJobRegistry(connection=kv_store)
 
         # Enforce max retain — trim oldest beyond cap
         job_ids = registry.get_job_ids()
         if len(job_ids) > FAILED_JOB_MAX_RETAIN:
             for old_id in job_ids[FAILED_JOB_MAX_RETAIN:]:
                 try:
-                    Job.fetch(old_id, connection=redis).delete()
+                    Job.fetch(old_id, connection=kv_store).delete()
                 except Exception:
                     pass
             job_ids = job_ids[:FAILED_JOB_MAX_RETAIN]
@@ -69,7 +69,7 @@ class FailedJobs(Resource):
         jobs = []
         for job_id in job_ids:
             try:
-                job = Job.fetch(job_id, connection=redis)
+                job = Job.fetch(job_id, connection=kv_store)
                 jobs.append(_job_to_dict(job))
             except NoSuchJobError:
                 continue
@@ -114,10 +114,10 @@ class ReplayJob(Resource):
 
             raise Forbidden
 
-        redis = current_app.config["redis"]
+        kv_store = current_app.config["kv_store"]
 
         try:
-            job = Job.fetch(job_id, connection=redis)
+            job = Job.fetch(job_id, connection=kv_store)
         except NoSuchJobError:
             r = {"job_id": job_id, "status": "not_found"}
             r.update(__base_response__)
@@ -148,7 +148,7 @@ class ReplayJob(Resource):
 
         # Determine routing context from original job meta
         context = job.meta.get("context", "default") if isinstance(job.meta, dict) else "default"
-        q = get_queue_for_context(context, redis)
+        q = get_queue_for_context(context, kv_store)
 
         new_job = q.enqueue(
             job.func,

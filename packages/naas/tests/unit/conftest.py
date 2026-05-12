@@ -11,7 +11,7 @@ def _disable_credential_encryption(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def mock_device_lockout(monkeypatch):
-    """Prevent device_lockout from connecting to Redis in unit tests."""
+    """Prevent device_lockout from touching the backing KV store in unit tests."""
     monkeypatch.setattr("naas.library.auth.device_lockout", lambda **kwargs: False)
     monkeypatch.setattr("naas.library.circuit_breaker.device_lockout", lambda **kwargs: False)
     monkeypatch.setattr("naas.resources.send_command.device_lockout", lambda **kwargs: False)
@@ -30,7 +30,8 @@ def mock_context_routing(monkeypatch, app):
 
     q = app.config["q"]
 
-    def mock_get_queue(context, redis):
+    def mock_get_queue(context, kv_store):
+        _ = context, kv_store
         return q
 
     monkeypatch.setattr("naas.resources.send_command.get_queue_for_context", mock_get_queue)

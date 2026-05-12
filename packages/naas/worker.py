@@ -19,11 +19,12 @@ from nats_worker import Worker as NATSWorker
 from naas.config import WORKER_CONTEXTS
 from naas.library.nats_queue import (
     Job,
+    KVStore,
     NoSuchJobError,
-    RedisLikeKV,
     register_worker_heartbeat,
     set_job_result,
     set_job_started,
+    task_subject_pattern,
 )
 from naas.library.netmiko_lib import netmiko_send_command, netmiko_send_command_structured, netmiko_send_config
 
@@ -74,7 +75,7 @@ def run_worker(name: str, queues: list[str], nats_servers: str) -> None:
 
     @worker.background_consumer(
         name="tasks",
-        subject="naas.jobs.naas-*",
+        subject=task_subject_pattern(),
         batch_size=1,
         ack_wait=WORKER_ACK_WAIT_SECONDS,
     )
@@ -90,7 +91,7 @@ def run_worker(name: str, queues: list[str], nats_servers: str) -> None:
             return
 
         try:
-            job = Job.fetch(job_id, connection=RedisLikeKV())
+            job = Job.fetch(job_id, connection=KVStore())
         except NoSuchJobError:
             await msg.ack()
             return
@@ -136,7 +137,7 @@ def arg_parsing() -> Namespace:
         "--queues",
         type=str,
         nargs="+",
-        default=[f"naas-{c}" for c in WORKER_CONTEXTS],
+        default=list(WORKER_CONTEXTS),
         help=f"Queue(s) to watch. Default from WORKER_CONTEXTS ({WORKER_CONTEXTS})",
     )
     argparser.add_argument(

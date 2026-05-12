@@ -1,4 +1,4 @@
-"""Redis-backed circuit breaker for per-device connection failure tracking."""
+"""KVStore-backed circuit breaker for per-device connection failure tracking."""
 
 import logging
 from collections.abc import Callable
@@ -15,7 +15,7 @@ from naas.config import (
 )
 from naas.library.audit import emit_audit_event
 from naas.library.auth import device_lockout
-from naas.library.nats_queue import RedisLikeKV as Redis
+from naas.library.nats_queue import KVStore
 
 if TYPE_CHECKING:
     pass
@@ -24,82 +24,82 @@ logger = logging.getLogger(name="NAAS")
 
 # Per-device circuit breakers (lazily populated)
 _circuit_breakers: dict[str, pybreaker.CircuitBreaker] = {}
-_redis_client: Redis | None = None
+_kv_store_client: KVStore | None = None
 
 
-def _get_redis() -> Redis:
+def _get_kv_store() -> KVStore:
     """Lazily initialise the shared state client for circuit breaker storage."""
-    global _redis_client
-    if _redis_client is None:  # pragma: no cover  # tests inject fakeredis before first call
-        _redis_client = Redis()
-    return _redis_client
+    global _kv_store_client
+    if _kv_store_client is None:  # pragma: no cover  # tests inject fakeredis before first call
+        _kv_store_client = KVStore()
+    return _kv_store_client
 
 
-class RedisCircuitBreakerStorage(pybreaker.CircuitBreakerStorage):
-    """Redis-backed storage for circuit breaker state shared across workers."""
+class KVCircuitBreakerStorage(pybreaker.CircuitBreakerStorage):
+    """KVStore-backed storage for circuit breaker state shared across workers."""
 
-    def __init__(self, name: str, redis_client: Redis):
+    def __init__(self, name: str, kv_store_client: KVStore):
         super().__init__(name)
-        self.redis = redis_client
+        self.kv_store = kv_store_client
         self._key = f"circuit_breaker:{name}"
 
     @property
     def state(self) -> str:
         """Get current circuit state."""
-        val = self.redis.hget(self._key, "state")
-        return val.decode() if isinstance(val, bytes) else (val or "closed")  # type: ignore[return-value]  # redis stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
+        val = self.kv_store.hget(self._key, "state")
+        return val.decode() if isinstance(val, bytes) else (val or "closed")  # type: ignore[return-value]  # kv_store stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
 
     @state.setter
     def state(self, state: str) -> None:
         """Set current circuit state."""
-        self.redis.hset(self._key, "state", state)
+        self.kv_store.hset(self._key, "state", state)
 
     def increment_counter(self) -> None:
         """Increment failure counter."""
-        self.redis.hincrby(self._key, "counter", 1)
+        self.kv_store.hincrby(self._key, "counter", 1)
 
     def reset_counter(self) -> None:
         """Reset failure counter."""
-        self.redis.hset(self._key, "counter", str(0))
+        self.kv_store.hset(self._key, "counter", str(0))
 
     def increment_success_counter(self) -> None:
         """Increment success counter."""
-        self.redis.hincrby(self._key, "success_counter", 1)
+        self.kv_store.hincrby(self._key, "success_counter", 1)
 
     def reset_success_counter(self) -> None:
         """Reset success counter."""
-        self.redis.hset(self._key, "success_counter", str(0))
+        self.kv_store.hset(self._key, "success_counter", str(0))
 
     @property
     def counter(self) -> int:
         """Get failure counter."""
-        val = self.redis.hget(self._key, "counter")
-        return int(val) if val else 0  # type: ignore[arg-type]  # redis stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
+        val = self.kv_store.hget(self._key, "counter")
+        return int(val) if val else 0  # type: ignore[arg-type]  # kv_store stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
 
     @property
     def success_counter(self) -> int:
         """Get success counter."""
-        val = self.redis.hget(self._key, "success_counter")
-        return int(val) if val else 0  # type: ignore[arg-type]  # redis stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
+        val = self.kv_store.hget(self._key, "success_counter")
+        return int(val) if val else 0  # type: ignore[arg-type]  # kv_store stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
 
     @property
     def opened_at(self) -> datetime | None:
         """Get when circuit was opened."""
-        val = self.redis.hget(self._key, "opened_at")
+        val = self.kv_store.hget(self._key, "opened_at")
         if not val:
             return None  # pragma: no cover  # opened_at is only set when circuit opens; tests reset state between runs
-        return datetime.fromisoformat(val.decode() if isinstance(val, bytes) else val)  # type: ignore[arg-type]  # redis stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
+        return datetime.fromisoformat(val.decode() if isinstance(val, bytes) else val)  # type: ignore[arg-type]  # kv_store stubs type hget as Awaitable[str|None]|str; sync client always returns str|None
 
     @opened_at.setter
     def opened_at(self, dt: datetime) -> None:
         """Set when circuit was opened."""
-        self.redis.hset(self._key, "opened_at", dt.isoformat())
+        self.kv_store.hset(self._key, "opened_at", dt.isoformat())
 
 
 def _get_circuit_breaker(device_id: str) -> pybreaker.CircuitBreaker:
     """Get or create a circuit breaker for a specific device."""
     if device_id not in _circuit_breakers:
-        storage = RedisCircuitBreakerStorage(f"device_{device_id}", _get_redis())
+        storage = KVCircuitBreakerStorage(f"device_{device_id}", _get_kv_store())
         breaker = pybreaker.CircuitBreaker(
             fail_max=CIRCUIT_BREAKER_THRESHOLD,
             reset_timeout=CIRCUIT_BREAKER_TIMEOUT,
@@ -135,11 +135,11 @@ def with_circuit_breaker(ip: str, request_id: str, fn: Callable[..., Any], *args
         return breaker.call(fn, *args, **kwargs)  # type: ignore[no-any-return]  # pybreaker.call() returns Any; no stubs available
     except pybreaker.CircuitBreakerError:
         logger.warning("%s %s:Circuit breaker open, rejecting connection attempt", request_id, ip)
-        device_lockout(ip=ip, redis=_get_redis(), report_failure=True)
+        device_lockout(ip=ip, kv_store=_get_kv_store(), report_failure=True)
         return None, f"Circuit breaker open for device {ip} - too many recent failures"
     except (TimeoutError, netmiko.NetMikoTimeoutException) as e:
-        device_lockout(ip=ip, redis=_get_redis(), report_failure=True)
+        device_lockout(ip=ip, kv_store=_get_kv_store(), report_failure=True)
         return None, str(e)
     except (ssh_exception.SSHException, ValueError) as e:
-        device_lockout(ip=ip, redis=_get_redis(), report_failure=True)
+        device_lockout(ip=ip, kv_store=_get_kv_store(), report_failure=True)
         return None, f"Unknown SSH error connecting to device {ip}: {str(e)}"

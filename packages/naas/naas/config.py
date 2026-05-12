@@ -11,8 +11,7 @@ import os
 import random
 import string
 
-from naas.library.nats_queue import Queue, configure_nats
-from naas.library.nats_queue import RedisLikeKV as Redis
+from naas.library.nats_queue import KVStore, Queue, configure_nats
 
 # Cert/Key File Locations
 CERT_KEY_FILE = "/tmp/key.pem"
@@ -113,19 +112,19 @@ def app_configure(app):
     # Turn off JSON Key sorting
     app.config["JSON_SORT_KEYS"] = False
 
-    # Initialize NATS transport config and a Redis-like state store used by auth/idempotency helpers
+    # Initialize NATS transport config and a shared KV state store used by auth/idempotency helpers
     configure_nats(servers=NATS_SERVERS)
-    redis = Redis()
-    redis.ping()
-    app.config["redis"] = redis
+    kv_store = KVStore()
+    kv_store.ping()
+    app.config["kv_store"] = kv_store
 
-    # Create a random string to use as a Salt for the UN/PW hashes, stash it in redis.
+    # Create a random string to use as a Salt for the UN/PW hashes, stash it in KV store.
     # Use setnx so the salt persists across API restarts — overwriting it would invalidate
     # all connection pool keys and in-flight job auth checks.
-    redis.setnx("naas_cred_salt", "".join(random.choice(string.ascii_lowercase) for _ in range(10)))
+    kv_store.setnx("naas_cred_salt", "".join(random.choice(string.ascii_lowercase) for _ in range(10)))
 
     # Initialize default queue facade
-    q = Queue("naas-default", connection=redis)
+    q = Queue("default", connection=kv_store)
     app.config["q"] = q
 
     # Initialize secrets backend

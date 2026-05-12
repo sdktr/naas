@@ -1,6 +1,6 @@
 from naas.library.nats_queue import (
+    KVStore,
     Queue,
-    RedisLikeKV,
     Worker,
     register_worker_heartbeat,
     set_job_result,
@@ -13,7 +13,7 @@ def _demo_task(value: str):
 
 
 def test_queue_enqueue_and_job_lifecycle():
-    q = Queue("naas-default", connection=RedisLikeKV())
+    q = Queue("default", connection=KVStore())
     job = q.enqueue(_demo_task, value="ok", job_id="job-1", meta={"hash": "owner-hash"})
 
     assert job.id == "job-1"
@@ -31,7 +31,7 @@ def test_queue_enqueue_and_job_lifecycle():
 
 
 def test_worker_registry_heartbeat_visibility():
-    register_worker_heartbeat("naas-test-worker", ["naas-default"])  # nosec B106
-    workers = Worker.all(connection=RedisLikeKV())
+    register_worker_heartbeat("naas-test-worker", ["default"])  # nosec B106
+    workers = Worker.all(connection=KVStore())
     names = [w.name for w in workers]
     assert "naas-test-worker" in names
