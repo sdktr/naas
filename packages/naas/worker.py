@@ -28,6 +28,8 @@ from naas.library.nats_queue import (
 from naas.library.netmiko_lib import netmiko_send_command, netmiko_send_command_structured, netmiko_send_config
 
 logger = getLogger("naas_worker")
+WORKER_HEARTBEAT_INTERVAL = int(os.environ.get("WORKER_HEARTBEAT_INTERVAL", "10"))
+WORKER_ACK_WAIT_SECONDS = int(os.environ.get("WORKER_ACK_WAIT_SECONDS", "60"))
 
 
 def _authorize_before_execution(job: Job, payload_meta: dict) -> bool:
@@ -54,7 +56,7 @@ def _dispatch_function(func_name: str):
 def _heartbeat_loop(stop_event: Event, worker_name: str, queues: list[str]) -> None:
     while not stop_event.is_set():
         register_worker_heartbeat(worker_name, queues)
-        stop_event.wait(10)
+        stop_event.wait(WORKER_HEARTBEAT_INTERVAL)
 
 
 def run_worker(name: str, queues: list[str], nats_servers: str) -> None:
@@ -70,7 +72,12 @@ def run_worker(name: str, queues: list[str], nats_servers: str) -> None:
 
     worker = NATSWorker(name=name, servers=nats_servers)
 
-    @worker.background_consumer(name="tasks", subject="naas.jobs.naas-*", batch_size=1, ack_wait=60)
+    @worker.background_consumer(
+        name="tasks",
+        subject="naas.jobs.naas-*",
+        batch_size=1,
+        ack_wait=WORKER_ACK_WAIT_SECONDS,
+    )
     async def _consume(msg, **kwargs):
         _ = kwargs
         payload = json.loads(msg.data.decode())
@@ -117,7 +124,13 @@ def run_worker(name: str, queues: list[str], nats_servers: str) -> None:
 
 def arg_parsing() -> Namespace:
     argparser = ArgumentParser(description="NATS JetStream worker launcher")
-    argparser.add_argument("workers", type=int, nargs="?", default=1, help="Number of worker processes")
+    argparser.add_argument(
+        "workers",
+        type=int,
+        nargs="?",
+        default=1,
+        help="Requested worker process count (nats-py-worker currently supports one process per container)",
+    )
     argparser.add_argument(
         "-q",
         "--queues",
@@ -144,7 +157,10 @@ def main() -> None:
     hostname = gethostname()
     worker_name = f"naas_{hostname}_1"
     if args.workers > 1:
-        logger.warning("nats-py-worker mode currently runs one process per container; requested workers=%s", args.workers)
+        logger.warning(
+            "nats-py-worker mode currently runs one process per container; requested workers=%s, starting one worker",
+            args.workers,
+        )
     logger.info("Starting worker %s for queues=%s", worker_name, args.queues)
     run_worker(worker_name, args.queues, args.nats_servers)
 

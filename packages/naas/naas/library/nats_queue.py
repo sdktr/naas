@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import socket
 import threading
 from collections.abc import Callable
@@ -22,6 +23,8 @@ from typing import Any
 from uuid import uuid4
 
 from nats import connect as nats_connect
+
+logger = logging.getLogger(__name__)
 
 
 class BackendUnavailableError(RuntimeError):
@@ -434,6 +437,7 @@ def publish_job(queue_name: str, job: Job) -> None:
             socket.getaddrinfo(host, None)
             break
     else:
+        logger.warning("Skipping NATS publish for %s: none of NATS_SERVERS are resolvable (%s)", job.id, NATS_SERVERS)
         return
 
     def _run() -> None:

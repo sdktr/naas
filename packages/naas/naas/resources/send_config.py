@@ -128,6 +128,8 @@ class SendConfig(Resource):
             ip_str,
             validated.port,
         )
+        # Compute submitter hash before enqueue so it can be embedded in job metadata
+        # and validated by workers immediately before execution.
         user_hash = g.credentials.salted_hash()
 
         job = q.enqueue(
