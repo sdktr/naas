@@ -31,7 +31,9 @@ def mock_context_routing(monkeypatch, app):
     q = app.config["q"]
 
     def mock_get_queue(context, kv_store):
-        _ = context, kv_store
+        _context = context
+        _kv_store = kv_store
+        _ = _context, _kv_store
         return q
 
     monkeypatch.setattr("naas.resources.send_command.get_queue_for_context", mock_get_queue)
