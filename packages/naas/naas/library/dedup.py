@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from naas.config import JOB_DEDUP_ENABLED, JOB_TIMEOUT
 
 if TYPE_CHECKING:
-    from redis import Redis
+    from naas.library.nats_queue import RedisLikeKV as Redis
 
 _DEDUP_TTL = JOB_TIMEOUT + 60  # Safety net: expires slightly after job timeout
 

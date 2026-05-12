@@ -61,20 +61,20 @@ secrets:
   # -- Use an existing Secret instead of creating one
   existingSecret: ""
   # -- Values for the created Secret (ignored if existingSecret is set)
-  redisPassword: ""
   encryptionKey: ""
   # -- Optional TLS (omit for self-signed)
   tlsCert: ""
   tlsKey: ""
   tlsCaBundle: ""
 
-# -- Bundled Redis (disable to use an external Redis)
-redis:
+# -- Bundled NATS (disable to use an external NATS)
+nats:
   enabled: true
   image:
-    repository: redis
-    tag: "7-alpine"
-  port: 6379
+    repository: nats
+    tag: "2.10-alpine"
+  port: 4222
+  monitorPort: 8222
   resources:
     requests:
       memory: "64Mi"
@@ -82,10 +82,9 @@ redis:
     limits:
       memory: "256Mi"
       cpu: "200m"
-  # -- External Redis (used when redis.enabled is false)
+  # -- External NATS (used when nats.enabled is false)
   external:
-    host: ""
-    port: "6379"
+    servers: ""
 
 # -- Ingress configuration
 ingress:

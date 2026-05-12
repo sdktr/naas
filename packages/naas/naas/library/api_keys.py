@@ -11,10 +11,10 @@ from uuid import uuid4
 
 import jwt
 from flask import current_app
-from redis import Redis
 
 from naas.config import API_KEY_DEFAULT_TTL, API_KEY_MAX_TTL
 from naas.library.audit import emit_audit_event
+from naas.library.nats_queue import RedisLikeKV as Redis
 
 logger = logging.getLogger(__name__)
 

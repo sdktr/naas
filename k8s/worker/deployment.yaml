@@ -19,22 +19,13 @@ spec:
           command:
             - python
             - worker.py
-            - --redis
-            - $(REDIS_HOST)
-            - --port
-            - $(REDIS_PORT)
-            - --auth_password
-            - $(REDIS_PASSWORD)
+            - --nats-servers
+            - $(NATS_SERVERS)
             - $(NAAS_WORKER_PROCESSES)
           envFrom:
             - configMapRef:
                 name: naas-config
           env:
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: naas-secret
-                  key: REDIS_PASSWORD
             - name: NAAS_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

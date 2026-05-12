@@ -4,9 +4,6 @@ from datetime import UTC
 
 from flask import current_app, request
 from flask_restful import Resource
-from rq.exceptions import NoSuchJobError
-from rq.job import Callback, Job
-from rq.registry import FailedJobRegistry
 from spectree import Response
 
 from naas import __base_response__
@@ -14,6 +11,7 @@ from naas.config import FAILED_JOB_MAX_RETAIN, JOB_TIMEOUT, JOB_TTL_FAILED, JOB_
 from naas.library.auth import Credentials, job_locker, job_unlocker, require_role
 from naas.library.callbacks import on_job_complete, on_job_failure
 from naas.library.context import get_queue_for_context
+from naas.library.nats_queue import Callback, FailedJobRegistry, Job, NoSuchJobError
 from naas.library.sanitize import sanitize_error
 from naas.library.validation import Validate
 from naas.models import FailedJobsResponse, JobResponse
@@ -150,7 +148,7 @@ class ReplayJob(Resource):
 
         # Determine routing context from original job meta
         context = job.meta.get("context", "default") if isinstance(job.meta, dict) else "default"
-        q, _ = get_queue_for_context(context, redis)
+        q = get_queue_for_context(context, redis)
 
         new_job = q.enqueue(
             job.func,

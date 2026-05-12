@@ -15,11 +15,11 @@ from flask_restful import Api
 from prometheus_client import Gauge
 from prometheus_flask_exporter import PrometheusMetrics
 from pythonjsonlogger.json import JsonFormatter
-from redis.exceptions import RedisError
 
 from naas import __base_response__
 from naas.config import app_configure
 from naas.library.errorhandlers import api_error_generator
+from naas.library.nats_queue import BackendUnavailableError as RedisError
 from naas.library.worker_cache import get_cached_workers
 from naas.resources.api_keys import ApiKey, ApiKeyRotate, ApiKeys
 from naas.resources.cancel_job import CancelJob
@@ -64,7 +64,7 @@ def _update_queue_metrics() -> None:
         _queue_depth.set(len(q))
     if redis is not None:
         _workers_active.set(len(get_cached_workers(redis)))
-        from rq.registry import FailedJobRegistry
+        from naas.library.nats_queue import FailedJobRegistry
 
         _failed_jobs.set(len(FailedJobRegistry(connection=redis)))
 

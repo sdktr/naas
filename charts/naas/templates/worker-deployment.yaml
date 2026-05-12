@@ -24,12 +24,8 @@ spec:
           command:
             - python
             - worker.py
-            - --redis
-            - $(REDIS_HOST)
-            - --port
-            - $(REDIS_PORT)
-            - --auth_password
-            - $(REDIS_PASSWORD)
+            - --nats-servers
+            - $(NATS_SERVERS)
             - $(NAAS_WORKER_PROCESSES)
           envFrom:
             - configMapRef:
@@ -37,11 +33,6 @@ spec:
           env:
             - name: WORKER_METRICS_PORT
               value: {{ .Values.worker.metricsPort | quote }}
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "naas.secretName" . }}
-                  key: REDIS_PASSWORD
             - name: NAAS_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

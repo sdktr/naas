@@ -2,13 +2,12 @@
 
 from flask import current_app, request
 from flask_restful import Resource
-from rq.exceptions import NoSuchJobError
-from rq.job import Job
 from spectree import Response
 from werkzeug.exceptions import Forbidden
 
 from naas import __base_response__
 from naas.library.auth import Credentials, job_unlocker, require_role
+from naas.library.nats_queue import Job, NoSuchJobError
 from naas.library.validation import Validate
 from naas.models import JobResultResponse
 from naas.spec import spec

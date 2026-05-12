@@ -2,7 +2,7 @@
 
 import time
 
-from rq import Worker
+from naas.library.nats_queue import Worker
 
 # Module-level cache — one per process. This is correct for the current deployment
 # (single gunicorn worker process per API pod). If gunicorn is ever configured with

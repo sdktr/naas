@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from flask import current_app, request
-from redis import Redis
-from rq.job import Job
 
 from naas.library.audit import emit_audit_event
+from naas.library.nats_queue import Job
+from naas.library.nats_queue import RedisLikeKV as Redis
 
 if TYPE_CHECKING:
-    from rq.job import Job
+    from naas.library.nats_queue import Job
 
 
 def job_locker(salted_creds: str, job: "Job") -> None:

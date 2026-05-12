@@ -2,11 +2,11 @@
 
 from flask import current_app
 from flask_restful import Resource
-from rq import Queue, Worker
 from spectree import Response
 
 from naas.config import NAAS_CONTEXTS
 from naas.library.auth import require_role
+from naas.library.nats_queue import Queue, Worker
 from naas.models import ContextInfo, ContextsResponse
 from naas.spec import spec
 

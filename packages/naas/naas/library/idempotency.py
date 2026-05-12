@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from naas.config import IDEMPOTENCY_TTL
 
 if TYPE_CHECKING:
-    from redis import Redis
+    from naas.library.nats_queue import RedisLikeKV as Redis
 
 
 def _redis_key(raw_key: str) -> str:

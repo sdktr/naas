@@ -8,17 +8,14 @@ from typing import TYPE_CHECKING, Any
 import netmiko
 import pybreaker
 from paramiko import ssh_exception
-from redis import Redis
 
 from naas.config import (
     CIRCUIT_BREAKER_THRESHOLD,
     CIRCUIT_BREAKER_TIMEOUT,
-    REDIS_HOST,
-    REDIS_PASSWORD,
-    REDIS_PORT,
 )
 from naas.library.audit import emit_audit_event
 from naas.library.auth import device_lockout
+from naas.library.nats_queue import RedisLikeKV as Redis
 
 if TYPE_CHECKING:
     pass
@@ -31,10 +28,10 @@ _redis_client: Redis | None = None
 
 
 def _get_redis() -> Redis:
-    """Lazily initialise the shared Redis client for circuit breaker storage."""
+    """Lazily initialise the shared state client for circuit breaker storage."""
     global _redis_client
     if _redis_client is None:  # pragma: no cover  # tests inject fakeredis before first call
-        _redis_client = Redis(host=REDIS_HOST, port=int(REDIS_PORT), password=REDIS_PASSWORD)
+        _redis_client = Redis()
     return _redis_client
 
 

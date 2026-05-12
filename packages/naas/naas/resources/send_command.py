@@ -2,9 +2,6 @@
 
 from flask import current_app, g, request
 from flask_restful import Resource
-from rq.exceptions import NoSuchJobError
-from rq.job import Callback
-from rq.job import Job as RQJob
 from spectree import Response
 
 from naas import __base_response__
@@ -17,6 +14,8 @@ from naas.library.decorators import valid_post
 from naas.library.dedup import get_duplicate_job_id, register_dedup_key
 from naas.library.errorhandlers import LockedOut
 from naas.library.idempotency import get_idempotent_job_id, store_idempotency_key
+from naas.library.nats_queue import Callback, NoSuchJobError
+from naas.library.nats_queue import Job as RQJob
 from naas.library.netmiko_lib import netmiko_send_command
 from naas.models import JobResponse, SendCommandRequest
 from naas.spec import spec
@@ -127,6 +126,8 @@ class SendCommand(Resource):
             ip_str,
             validated.port,
         )
+        user_hash = g.credentials.salted_hash()
+
         job = q.enqueue(
             netmiko_send_command,
             ip=ip_str,
@@ -148,13 +149,12 @@ class SendCommand(Resource):
                 "webhook_url": validated.webhook_url or "",
                 "webhook_secret": validated.webhook_secret or "",
                 "context": validated.context,
+                "hash": user_hash,
             },
         )
         job_id = job.id
         current_app.logger.info("%s: Enqueued job for %s@%s:%s", job_id, g.credentials.username, ip_str, validated.port)
 
-        # Generate the un/pw hash:
-        user_hash = g.credentials.salted_hash()
 
         # Stash the job_id in redis, with the user/pass hash so that only that user can retrieve results
         job_locker(salted_creds=user_hash, job=job)

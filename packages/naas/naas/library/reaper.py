@@ -10,16 +10,12 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-from rq import Worker
-from rq.job import Job, JobStatus
-from rq.registry import FailedJobRegistry, StartedJobRegistry
-from rq.worker import BaseWorker
-
 from naas.config import JOB_REAPER_ENABLED, JOB_REAPER_INTERVAL, WORKER_STALE_THRESHOLD
 from naas.library.dedup import clear_dedup_key
+from naas.library.nats_queue import BaseWorker, FailedJobRegistry, Job, JobStatus, StartedJobRegistry, Worker
 
 if TYPE_CHECKING:
-    from redis import Redis
+    from naas.library.nats_queue import RedisLikeKV as Redis
 
 logger = logging.getLogger(__name__)
 

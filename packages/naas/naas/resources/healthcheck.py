@@ -4,11 +4,11 @@ import time
 
 from flask import current_app
 from flask_restful import Resource
-from redis.exceptions import RedisError
-from rq.registry import FailedJobRegistry
 from spectree import Response
 
 from naas import __version__
+from naas.library.nats_queue import BackendUnavailableError as RedisError
+from naas.library.nats_queue import FailedJobRegistry
 from naas.library.worker_cache import get_cached_workers
 from naas.models import HealthCheckResponse
 from naas.spec import spec

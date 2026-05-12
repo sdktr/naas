@@ -3,10 +3,9 @@ context.py
 Context routing helpers for multi-segment worker environments.
 """
 
-from rq import Queue, Worker
-
 from naas.config import MAX_QUEUE_DEPTH, NAAS_CONTEXTS
 from naas.library.errorhandlers import InvalidContext, NoWorkersForContext, QueueFull
+from naas.library.nats_queue import Queue, Worker
 
 
 def get_queue_for_context(context: str, redis: object) -> Queue:

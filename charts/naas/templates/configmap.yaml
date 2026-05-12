@@ -6,8 +6,7 @@ metadata:
   labels:
     {{- include "naas.labels" . | nindent 4 }}
 data:
-  REDIS_HOST: {{ include "naas.redisHost" . | quote }}
-  REDIS_PORT: {{ include "naas.redisPort" . }}
+  NATS_SERVERS: {{ include "naas.natsServers" . | quote }}
   NAAS_WORKER_PROCESSES: {{ .Values.worker.processes | quote }}
   {{- range $key, $val := .Values.config }}
   {{ $key }}: {{ $val | quote }}

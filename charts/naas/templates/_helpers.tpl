@@ -28,23 +28,12 @@ naas-secret
 {{- end }}
 
 {{/*
-Redis host — bundled service name or external.
+NATS servers list.
 */}}
-{{- define "naas.redisHost" -}}
-{{- if .Values.redis.enabled -}}
-redis
+{{- define "naas.natsServers" -}}
+{{- if .Values.nats.enabled -}}
+nats://nats:{{ .Values.nats.port }}
 {{- else -}}
-{{ .Values.redis.external.host }}
-{{- end -}}
-{{- end }}
-
-{{/*
-Redis port.
-*/}}
-{{- define "naas.redisPort" -}}
-{{- if .Values.redis.enabled -}}
-{{ .Values.redis.port | quote }}
-{{- else -}}
-{{ .Values.redis.external.port | quote }}
+{{ .Values.nats.external.servers }}
 {{- end -}}
 {{- end }}
