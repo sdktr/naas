@@ -35,7 +35,7 @@ class ConnectionPool:
     Per-process pool of reusable Netmiko SSH connections.
 
     Pool key: (ip, port, sha512(username:password+salt), platform) — credentials
-    must match exactly. The salt is fetched from Redis at worker startup via
+    must match exactly. The salt is fetched from KVStore at worker startup via
     set_salt() and matches the salt used by Credentials.salted_hash() in the API.
 
     RQ workers are single-threaded so no locking is required within a process.
@@ -51,7 +51,7 @@ class ConnectionPool:
         Must be called at worker startup before any jobs run.
 
         Args:
-            salt: The naas_cred_salt value from Redis.
+            salt: The naas_cred_salt value from KVStore.
         """
         self._salt = salt
 

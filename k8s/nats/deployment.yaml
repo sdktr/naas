@@ -1,34 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: redis
+  name: nats
   namespace: naas
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: redis
+      app: nats
   template:
     metadata:
       labels:
-        app: redis
+        app: nats
     spec:
       containers:
-        - name: redis
-          image: redis:7-alpine
-          args:
-            - --requirepass
-            - $(REDIS_PASSWORD)
-            - --port
-            - "6379"
-          env:
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: naas-secret
-                  key: REDIS_PASSWORD
+        - name: nats
+          image: nats:2.10-alpine
+          args: ["-js", "-p", "4222", "-m", "8222"]
           ports:
-            - containerPort: 6379
+            - containerPort: 4222
+            - containerPort: 8222
           resources:
             requests:
               memory: "64Mi"
@@ -38,11 +29,11 @@ spec:
               cpu: "200m"
           livenessProbe:
             exec:
-              command: ["redis-cli", "ping"]
+              command: ["wget", "--spider", "-q", "http://localhost:8222/healthz"]
             initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             exec:
-              command: ["redis-cli", "ping"]
+              command: ["wget", "--spider", "-q", "http://localhost:8222/healthz"]
             initialDelaySeconds: 5
             periodSeconds: 5

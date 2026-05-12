@@ -72,7 +72,7 @@ class Validate:
         if getattr(g, "auth_method", None) == "bearer":
             return  # JWT-authenticated users are not subject to TACACS lockout
         if request.authorization and request.authorization.username:
-            if tacacs_auth_lockout(username=request.authorization.username, redis=current_app.config["redis"]):
+            if tacacs_auth_lockout(username=request.authorization.username, kv_store=current_app.config["kv_store"]):
                 current_app.logger.error(f"{request.authorization.username} is currently locked out.")
                 raise LockedOut
 

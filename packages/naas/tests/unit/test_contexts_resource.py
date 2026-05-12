@@ -10,7 +10,7 @@ class TestContexts:
     def test_get_contexts(self, client):
         """GET /v1/contexts returns list of configured contexts with worker counts."""
         mock_worker = MagicMock()
-        mock_worker.queue_names.return_value = ["naas-default"]
+        mock_worker.queue_names.return_value = ["default"]
 
         with patch("naas.resources.contexts.Worker.all", return_value=[mock_worker]):
             with patch("naas.resources.contexts.Queue") as mock_queue_cls:

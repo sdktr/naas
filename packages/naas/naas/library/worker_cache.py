@@ -1,8 +1,8 @@
-"""Cached Worker.all() helper to avoid repeated Redis scans on every request."""
+"""Cached Worker.all() helper to avoid repeated KVStore scans on every request."""
 
 import time
 
-from rq import Worker
+from naas.library.nats_queue import Worker
 
 # Module-level cache — one per process. This is correct for the current deployment
 # (single gunicorn worker process per API pod). If gunicorn is ever configured with
@@ -13,11 +13,11 @@ _cache_ts: float = 0.0
 _TTL = 10.0  # seconds
 
 
-def get_cached_workers(redis) -> list:  # type: ignore[type-arg]
+def get_cached_workers(kv_store) -> list:  # type: ignore[type-arg]
     """Return cached Worker.all() result, refreshing if TTL expired.
 
     Args:
-        redis: Redis connection.
+        kv_store: KVStore connection.
 
     Returns:
         List of RQ Worker objects, cached for up to 10 seconds.
@@ -25,6 +25,6 @@ def get_cached_workers(redis) -> list:  # type: ignore[type-arg]
     global _cache, _cache_ts
     now = time.monotonic()
     if now - _cache_ts > _TTL:
-        _cache = Worker.all(connection=redis)
+        _cache = Worker.all(connection=kv_store)
         _cache_ts = now
     return _cache

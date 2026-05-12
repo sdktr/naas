@@ -372,7 +372,7 @@ class WorkersHealth(HealthComponentStatus):
 class HealthComponents(BaseModel):
     """Health check component statuses."""
 
-    redis: HealthComponentStatus = Field(..., description="Redis connectivity")
+    kv_store: HealthComponentStatus = Field(..., description="KVStore connectivity")
     queue: QueueHealth = Field(..., description="Job queue status")
     workers: WorkersHealth = Field(..., description="Worker pool status")
     failed_jobs: int = Field(default=0, description="Number of failed jobs")

@@ -2,14 +2,13 @@
 
 from flask import current_app, request
 from flask_restful import Resource
-from rq.exceptions import NoSuchJobError
-from rq.job import Job
 from spectree import Response
 from werkzeug.exceptions import Conflict, Forbidden
 
 from naas import __base_response__
 from naas.library.audit import emit_audit_event
 from naas.library.auth import Credentials, job_unlocker, require_role
+from naas.library.nats_queue import Job, NoSuchJobError
 from naas.library.validation import Validate
 from naas.spec import spec
 
@@ -45,7 +44,7 @@ class CancelJob(Resource):
 
         # Check job exists before auth check (404 > 403)
         try:
-            job = Job.fetch(job_id, connection=current_app.config["redis"])
+            job = Job.fetch(job_id, connection=current_app.config["kv_store"])
         except NoSuchJobError:
             r = {"job_id": job_id, "status": "not_found"}
             r.update(__base_response__)

@@ -51,7 +51,7 @@ curl -k -X POST https://localhost:8443/v1/send_command \
 - ✅ RESTful API with async job processing
 - 🔒 HTTPS with TLS and HTTP Basic Auth
 - 🐳 Docker Compose and Kubernetes deployment
-- 📊 Redis-backed job queue (RQ)
+- 📊 NATS JetStream-backed async task queue (`nats-py-worker`)
 - 🚀 Horizontal scaling support
 - 🔌 All [Netmiko platforms](https://github.com/ktbyers/netmiko/blob/develop/PLATFORMS.md) supported
 - 🔐 Circuit breaker pattern for failing devices

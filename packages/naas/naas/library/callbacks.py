@@ -7,15 +7,14 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from rq import Callback, Queue, Retry
-
 from naas.config import WEBHOOK_MAX_RETRIES
 from naas.library.audit import emit_audit_event
 from naas.library.dedup import clear_dedup_key
+from naas.library.nats_queue import Callback, Queue, Retry
 from naas.library.webhook import deliver_webhook
 
 if TYPE_CHECKING:
-    from rq.job import Job
+    from naas.library.nats_queue import Job
 
 logger = logging.getLogger(__name__)
 

@@ -1,13 +1,11 @@
 services:
-  redis:
-    image: redis:7-alpine
-    command: >-
-      --requirepass ${REDIS_PASSWORD:-mah_redis_pw}
-      --port ${REDIS_PORT:-6379}
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
     networks:
       - naas
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -21,9 +19,7 @@ services:
     ports:
       - "${NAAS_GLOBAL_PORT:-8443}:443"
     environment:
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-mah_redis_pw}
+      - NATS_SERVERS=${NATS_SERVERS:-nats://nats:4222}
       - APP_ENVIRONMENT=${APP_ENVIRONMENT:-dev}
       - NAAS_CERT=${NAAS_CERT}
       - NAAS_KEY=${NAAS_KEY}
@@ -31,7 +27,7 @@ services:
     networks:
       - naas
     depends_on:
-      redis:
+      nats:
         condition: service_healthy
     restart: unless-stopped
     logging:
@@ -47,18 +43,14 @@ services:
       dockerfile: packages/naas/Dockerfile
     command: >-
       python worker.py
-      --redis ${REDIS_HOST:-redis}
-      --port ${REDIS_PORT:-6379}
-      --auth_password ${REDIS_PASSWORD:-mah_redis_pw}
+      --nats-servers ${NATS_SERVERS:-nats://nats:4222}
       ${NAAS_WORKER_PROCESSES:-100}
     environment:
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-mah_redis_pw}
+      - NATS_SERVERS=${NATS_SERVERS:-nats://nats:4222}
     networks:
       - naas
     depends_on:
-      redis:
+      nats:
         condition: service_healthy
     restart: unless-stopped
     deploy:

@@ -4,9 +4,6 @@ from datetime import UTC
 
 from flask import current_app, request
 from flask_restful import Resource
-from rq.exceptions import NoSuchJobError
-from rq.job import Callback, Job
-from rq.registry import FailedJobRegistry
 from spectree import Response
 
 from naas import __base_response__
@@ -14,6 +11,7 @@ from naas.config import FAILED_JOB_MAX_RETAIN, JOB_TIMEOUT, JOB_TTL_FAILED, JOB_
 from naas.library.auth import Credentials, job_locker, job_unlocker, require_role
 from naas.library.callbacks import on_job_complete, on_job_failure
 from naas.library.context import get_queue_for_context
+from naas.library.nats_queue import Callback, FailedJobRegistry, Job, NoSuchJobError
 from naas.library.sanitize import sanitize_error
 from naas.library.validation import Validate
 from naas.models import FailedJobsResponse, JobResponse
@@ -55,15 +53,15 @@ class FailedJobs(Resource):
         v = Validate()
         v.has_auth()
 
-        redis = current_app.config["redis"]
-        registry = FailedJobRegistry(connection=redis)
+        kv_store = current_app.config["kv_store"]
+        registry = FailedJobRegistry(connection=kv_store)
 
         # Enforce max retain — trim oldest beyond cap
         job_ids = registry.get_job_ids()
         if len(job_ids) > FAILED_JOB_MAX_RETAIN:
             for old_id in job_ids[FAILED_JOB_MAX_RETAIN:]:
                 try:
-                    Job.fetch(old_id, connection=redis).delete()
+                    Job.fetch(old_id, connection=kv_store).delete()
                 except Exception:
                     pass
             job_ids = job_ids[:FAILED_JOB_MAX_RETAIN]
@@ -71,7 +69,7 @@ class FailedJobs(Resource):
         jobs = []
         for job_id in job_ids:
             try:
-                job = Job.fetch(job_id, connection=redis)
+                job = Job.fetch(job_id, connection=kv_store)
                 jobs.append(_job_to_dict(job))
             except NoSuchJobError:
                 continue
@@ -116,10 +114,10 @@ class ReplayJob(Resource):
 
             raise Forbidden
 
-        redis = current_app.config["redis"]
+        kv_store = current_app.config["kv_store"]
 
         try:
-            job = Job.fetch(job_id, connection=redis)
+            job = Job.fetch(job_id, connection=kv_store)
         except NoSuchJobError:
             r = {"job_id": job_id, "status": "not_found"}
             r.update(__base_response__)
@@ -150,7 +148,7 @@ class ReplayJob(Resource):
 
         # Determine routing context from original job meta
         context = job.meta.get("context", "default") if isinstance(job.meta, dict) else "default"
-        q, _ = get_queue_for_context(context, redis)
+        q = get_queue_for_context(context, kv_store)
 
         new_job = q.enqueue(
             job.func,

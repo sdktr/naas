@@ -11,18 +11,15 @@ import os
 import random
 import string
 
-from redis import Redis
-from rq import Queue
+from naas.library.nats_queue import KVStore, Queue, configure_nats
 
 # Cert/Key File Locations
 CERT_KEY_FILE = "/tmp/key.pem"
 CERT_FILE = "/tmp/cert.pem"
 CERT_BUNDLE_FILE = "/tmp/bundle.crt"
 
-# Redis config
-REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
-REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
-REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "mah_redis_pw")
+# NATS config
+NATS_SERVERS = os.environ.get("NATS_SERVERS", "nats://nats:4222")
 
 # Job TTL config (seconds)
 JOB_TTL_SUCCESS = int(os.environ.get("JOB_TTL_SUCCESS", 86400))  # 24h
@@ -115,18 +112,19 @@ def app_configure(app):
     # Turn off JSON Key sorting
     app.config["JSON_SORT_KEYS"] = False
 
-    # Initialize a Redis connection and store it for later
-    redis = Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD)
-    redis.ping()  # Fail fast if Redis is unavailable at startup
-    app.config["redis"] = redis
+    # Initialize NATS transport config and a shared KV state store used by auth/idempotency helpers
+    configure_nats(servers=NATS_SERVERS)
+    kv_store = KVStore()
+    kv_store.ping()
+    app.config["kv_store"] = kv_store
 
-    # Create a random string to use as a Salt for the UN/PW hashes, stash it in redis.
+    # Create a random string to use as a Salt for the UN/PW hashes, stash it in KV store.
     # Use setnx so the salt persists across API restarts — overwriting it would invalidate
     # all connection pool keys and in-flight job auth checks.
-    redis.setnx("naas_cred_salt", "".join(random.choice(string.ascii_lowercase) for _ in range(10)))
+    kv_store.setnx("naas_cred_salt", "".join(random.choice(string.ascii_lowercase) for _ in range(10)))
 
-    # Initialize an rq Queue and store it for later (default context queue)
-    q = Queue("naas-default", connection=redis)
+    # Initialize default queue facade
+    q = Queue("default", connection=kv_store)
     app.config["q"] = q
 
     # Initialize secrets backend
@@ -139,5 +137,5 @@ def app_configure(app):
         import logging
 
         logging.getLogger("NAAS").warning(
-            "CREDENTIAL_ENCRYPTION_ENABLED=false — credentials stored in plaintext in Redis"
+            "CREDENTIAL_ENCRYPTION_ENABLED=false — credentials stored in plaintext in job payloads"
         )

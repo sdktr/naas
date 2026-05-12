@@ -2,12 +2,11 @@
 
 from flask import current_app, request
 from flask_restful import Resource
-from rq.job import Job
-from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
 from spectree import Response
 
 from naas import __base_response__
 from naas.library.auth import require_role
+from naas.library.nats_queue import FailedJobRegistry, FinishedJobRegistry, Job, StartedJobRegistry
 from naas.library.validation import Validate
 from naas.models import ListJobsQuery, ListJobsResponse
 from naas.spec import spec
@@ -34,7 +33,7 @@ class ListJobs(Resource):
 
         # Get queue and registries
         q = current_app.config["q"]
-        redis_conn = current_app.config["redis"]
+        kv_store_conn = current_app.config["kv_store"]
 
         # Collect job IDs based on status filter
         job_ids = []
@@ -105,7 +104,7 @@ class ListJobs(Resource):
                 "ended_at": job.ended_at.isoformat() if job.ended_at else None,
                 "tags": getattr(job, "meta", {}).get("tags") if isinstance(getattr(job, "meta", {}), dict) else None,
             }
-            for job in Job.fetch_many(job_ids, connection=redis_conn)
+            for job in Job.fetch_many(job_ids, connection=kv_store_conn)
             if job is not None
         ]
 

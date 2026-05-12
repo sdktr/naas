@@ -2,7 +2,7 @@
 reaper.py
 Background thread that detects orphaned jobs from dead workers and moves them
 to the FailedJobRegistry. Runs in each worker process but uses a distributed
-Redis lock so only one reaper executes per cycle.
+KVStore lock so only one reaper executes per cycle.
 """
 
 import logging
@@ -10,16 +10,12 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-from rq import Worker
-from rq.job import Job, JobStatus
-from rq.registry import FailedJobRegistry, StartedJobRegistry
-from rq.worker import BaseWorker
-
 from naas.config import JOB_REAPER_ENABLED, JOB_REAPER_INTERVAL, WORKER_STALE_THRESHOLD
 from naas.library.dedup import clear_dedup_key
+from naas.library.nats_queue import BaseWorker, FailedJobRegistry, Job, JobStatus, StartedJobRegistry, Worker
 
 if TYPE_CHECKING:
-    from redis import Redis
+    from naas.library.nats_queue import KVStore
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +31,7 @@ def _is_worker_stale(worker: BaseWorker, threshold: int) -> bool:
     return bool(age > threshold)
 
 
-def reap_orphaned_jobs(redis: "Redis") -> int:
+def reap_orphaned_jobs(kv_store: "KVStore") -> int:
     """
     Scan StartedJobRegistry for jobs whose worker is dead or stale.
     Move orphaned jobs to FailedJobRegistry and clear their dedup keys.
@@ -45,19 +41,19 @@ def reap_orphaned_jobs(redis: "Redis") -> int:
     worker_id = f"reaper-{threading.get_ident()}"
 
     # Acquire distributed lock — only one reaper runs per cycle
-    acquired = redis.set(_REAPER_LOCK_KEY, worker_id, nx=True, ex=JOB_REAPER_INTERVAL)
+    acquired = kv_store.set(_REAPER_LOCK_KEY, worker_id, nx=True, ex=JOB_REAPER_INTERVAL)
     if not acquired:
         return 0
 
     reaped = 0
     try:
-        started_registry = StartedJobRegistry(connection=redis)
-        failed_registry = FailedJobRegistry(connection=redis)
-        active_workers = {w.name: w for w in Worker.all(connection=redis)}
+        started_registry = StartedJobRegistry(connection=kv_store)
+        failed_registry = FailedJobRegistry(connection=kv_store)
+        active_workers = {w.name: w for w in Worker.all(connection=kv_store)}
 
         for job_id in started_registry.get_job_ids():
             try:
-                job = Job.fetch(job_id, connection=redis)
+                job = Job.fetch(job_id, connection=kv_store)
             except Exception:
                 continue
 
@@ -70,7 +66,7 @@ def reap_orphaned_jobs(redis: "Redis") -> int:
                 # Clear dedup key so the job can be re-submitted
                 dedup_key = job.meta.get("dedup_key", "") if isinstance(job.meta, dict) else ""
                 if dedup_key:
-                    clear_dedup_key(dedup_key, redis)
+                    clear_dedup_key(dedup_key, kv_store)
 
                 # Move to failed registry
                 started_registry.remove(job)
@@ -84,19 +80,19 @@ def reap_orphaned_jobs(redis: "Redis") -> int:
                 reaped += 1
 
     finally:
-        redis.delete(_REAPER_LOCK_KEY)
+        kv_store.delete(_REAPER_LOCK_KEY)
 
     if reaped:
         logger.info("Reaper: reaped %d orphaned job(s)", reaped)
     return reaped
 
 
-def start_reaper(redis: "Redis") -> threading.Thread:
+def start_reaper(kv_store: "KVStore") -> threading.Thread:
     """
     Start the reaper as a background daemon thread.
 
     Args:
-        redis: Redis connection
+        kv_store: KVStore connection
 
     Returns:
         The started thread
@@ -112,7 +108,7 @@ def start_reaper(redis: "Redis") -> threading.Thread:
         while True:
             time.sleep(JOB_REAPER_INTERVAL)
             try:
-                reap_orphaned_jobs(redis)
+                reap_orphaned_jobs(kv_store)
             except Exception as e:
                 logger.error("Reaper error: %s", e)
 

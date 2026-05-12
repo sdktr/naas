@@ -27,11 +27,6 @@ spec:
             - configMapRef:
                 name: naas-config
           env:
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "naas.secretName" . }}
-                  key: REDIS_PASSWORD
             - name: NAAS_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
